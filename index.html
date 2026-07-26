@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Space Warp - Starfield Simulation</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #fff;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+
+        /* Glassmorphism UI Overlay */
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 15, 30, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            padding: 20px;
+            width: 280px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+            z-index: 10;
+        }
+
+        .ui-panel.collapsed {
+            transform: translateX(-310px);
+            opacity: 0.2;
+        }
+
+        .ui-toggle {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 11;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            transition: all 0.2s ease;
+        }
+
+        .ui-toggle:hover {
+            background: rgba(30, 41, 59, 0.9);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .ui-panel.open ~ .ui-toggle {
+            left: 280px;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .panel-title {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-group {
+            margin-bottom: 14px;
+        }
+
+        .control-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #94a3b8;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .control-group label span.value {
+            color: #38bdf8;
+            font-family: monospace;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 5px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.15);
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            color: #e2e8f0;
+            padding: 8px 10px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #fff;
+        }
+
+        .btn.active {
+            background: rgba(56, 189, 248, 0.25);
+            border-color: #38bdf8;
+            color: #38bdf8;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+        }
+
+        /* Speed Boost Indicator */
+        .boost-indicator {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        .boost-text {
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        .hint-text {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.4);
+            margin-top: 4px;
+        }
+
+        /* Vignette overlay for immersion */
+        .vignette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.8) 100%);
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas"></canvas>
+    <div class="vignette"></div>
+
+    <button class="ui-toggle" id="uiToggle" title="Toggle Controls">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    </button>
+
+    <div class="ui-panel" id="uiPanel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                Warp Controls
+            </span>
+        </div>
+
+        <div class="control-group">
+            <label>Flight Speed <span class="value" id="speedVal">18</span></label>
+            <input type="range" id="speedSlider" min="2" max="60" value="18" step="1">
+        </div>
+
+        <div class="control-group">
+            <label>Star Density <span class="value" id="countVal">1800</span></label>
+            <input type="range" id="countSlider" min="300" max="4000" value="1800" step="100">
+        </div>
+
+        <div class="control-group">
+            <label>Trace / Streak Length <span class="value" id="trailVal">1.2x</span></label>
+            <input type="range" id="trailSlider" min="0.1" max="3.0" value="1.2" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label>Field of View (FOV) <span class="value" id="fovVal">300</span></label>
+            <input type="range" id="fovSlider" min="150" max="600" value="300" step="10">
+        </div>
+
+        <div class="control-group">
+            <label>Star Color Mode</label>
+            <div class="btn-group">
+                <button class="btn active" data-color="spectrum">Realistic Spectrum</button>
+                <button class="btn" data-color="monochrome">Pure White</button>
+                <button class="btn" data-color="cyan">Cyber Cyan</button>
+                <button class="btn" data-color="hyperdrive">Hyperdrive Gold</button>
+            </div>
+        </div>
+
+        <div class="hint-text">
+            💡 Scroll mouse wheel or Hold Left Click to activate Boost!
+        </div>
+    </div>
+
+    <div class="boost-indicator">
+        <span class="boost-text" id="statusText">Cruising Sub-Light</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Config & Settings State
+        const settings = {
+            speed: 18,
+            baseSpeed: 18,
+            targetSpeed: 18,
+            boostMultiplier: 3.5,
+            isBoosting: false,
+            starCount: 1800,
+            trailLength: 1.2,
+            fov: 300,
+            maxDepth: 1500,
+            colorMode: 'spectrum'
+        };
+
+        // Screen parameters
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        let centerX = width / 2;
+        let centerY = height / 2;
+
+        // Interactive View Center Steering (Flight Pitch/Yaw)
+        let targetCenterX = centerX;
+        let targetCenterY = centerY;
+        let currentCenterX = centerX;
+        let currentCenterY = centerY;
+
+        // Stars Container
+        let stars = [];
+
+        // Color palettes for stars
+        const COLOR_PALETTES = {
+            spectrum: [
+                '#ffffff', '#ffffff', '#ffffff', '#f8f9ff', '#e2e8ff',
+                '#cae1ff', '#b3d5ff', '#fff3e0', '#ffe0b2'
+            ],
+            monochrome: ['#ffffff', '#f1f5f9', '#e2e8f0'],
+            cyan: ['#ffffff', '#00f2fe', '#4facfe', '#38bdf8', '#0284c7'],
+            hyperdrive: ['#ffffff', '#fbbf24', '#f59e0b', '#d97706', '#ef4444']
+        };
+
+        class Star {
+            constructor() {
+                this.reset(true);
+            }
+
+            reset(initial = false) {
+                // Spread coordinates in 3D box centered around (0,0)
+                // Width/Height spread scaled by depth to avoid tunnel edge clipping
+                const spreadX = width * 1.8;
+                const spreadY = height * 1.8;
+
+                this.x = (Math.random() - 0.5) * spreadX;
+                this.y = (Math.random() - 0.5) * spreadY;
+                
+                // Distribute Z uniformly or scatter initially across depth
+                this.z = initial ? Math.random() * settings.maxDepth : settings.maxDepth;
+                this.prevZ = this.z;
+
+                // Base intrinsic size variations
+                this.baseSize = Math.random() * 1.2 + 0.6;
+                
+                // Color picking
+                const palette = COLOR_PALETTES[settings.colorMode];
+                this.color = palette[Math.floor(Math.random() * palette.length)];
+
+                // Subtle twinkle factor for distant static look
+                this.twinkleFactor = Math.random() * 0.5 + 0.5;
+            }
+
+            update(deltaSpeed) {
+                this.prevZ = this.z;
+                this.z -= deltaSpeed;
+
+                // Infinite respawn once star passes behind camera
+                if (this.z <= 2) {
+                    this.reset(false);
+                }
+            }
+
+            draw() {
+                // 3D Perspective Projection Math
+                // Projected Point = (X / Z) * FOV + Center
+                const k = settings.fov / this.z;
+                const px = this.x * k + currentCenterX;
+                const py = this.y * k + currentCenterY;
+
+                // Off-screen check
+                if (px < -100 || px > width + 100 || py < -100 || py > height + 100) {
+                    return;
+                }
+
+                // Previous frame position for streak / trace calculation
+                // Calculates tail by looking backwards in Z space
+                const traceDepth = Math.min(settings.maxDepth, this.z + (settings.speed * 0.4 * settings.trailLength));
+                const prevK = settings.fov / traceDepth;
+                const ppx = this.x * prevK + currentCenterX;
+                const ppy = this.y * prevK + currentCenterY;
+
+                // Calculate proximity factor (0 when far, 1 when right next to camera)
+                const proximity = 1 - (this.z / settings.maxDepth);
+                
+                // Parallax depth size & speed visual enhancement:
+                // As stars get closer:
+                // 1. They move faster outward (inherent to x/z math)
+                // 2. They grow larger and brighter
+                const size = Math.max(0.1, (1 - this.z / settings.maxDepth) * 3.5 * this.baseSize);
+                const alpha = Math.min(1, Math.max(0.15, proximity * 1.8)) * this.twinkleFactor;
+
+                // Vector distance for streak line
+                const dx = px - ppx;
+                const dy = py - ppy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                ctx.save();
+                ctx.globalAlpha = alpha;
+
+                // Draw trail/streak if moving fast enough or star is close
+                if (dist > 1.2) {
+                    ctx.beginPath();
+                    ctx.moveTo(ppx, ppy);
+                    ctx.lineTo(px, py);
+
+                    // Dynamic stroke width based on proximity
+                    ctx.lineWidth = Math.max(0.8, size * 0.8);
+                    
+                    // Streak Gradient for smooth fade-in head to tail
+                    const gradient = ctx.createLinearGradient(ppx, ppy, px, py);
+                    gradient.addColorStop(0, 'rgba(255,255,255,0)');
+                    gradient.addColorStop(0.7, this.color);
+                    gradient.addColorStop(1, '#ffffff');
+
+                    ctx.strokeStyle = gradient;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
+                }
+
+                // Draw star core head
+                ctx.beginPath();
+                ctx.arc(px, py, size / 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+
+                // Add subtle soft glow to very close stars
+                if (proximity > 0.7) {
+                    ctx.beginPath();
+                    ctx.arc(px, py, size * 1.5, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.globalAlpha = alpha * 0.35;
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // Initialize starfield pool
+        function initStars() {
+            stars = [];
+            for (let i = 0; i < settings.starCount; i++) {
+                stars.push(new Star());
+            }
+        }
+
+        // Adjust star count dynamically based on slider
+        function adjustStarCount() {
+            if (stars.length < settings.starCount) {
+                const addCount = settings.starCount - stars.length;
+                for (let i = 0; i < addCount; i++) {
+                    stars.push(new Star());
+                }
+            } else if (stars.length > settings.starCount) {
+                stars.length = settings.starCount;
+            }
+        }
+
+        // Main Animation Loop
+        let lastTime = performance.now();
+        function animate(now) {
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            // Smooth speed transitions (e.g. boosting / hyperspace warp)
+            settings.speed += (settings.targetSpeed - settings.speed) * 0.08;
+
+            // Smooth flight yaw/pitch camera steering
+            currentCenterX += (targetCenterX - currentCenterX) * 0.05;
+            currentCenterY += (targetCenterY - currentCenterY) * 0.05;
+
+            // Clear Canvas with subtle trail fade during super high warp
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, width, height);
+
+            // Sort stars by Z so far stars render behind near stars (depth sorting)
+            stars.sort((a, b) => b.z - a.z);
+
+            // Update & Render Stars
+            for (let i = 0; i < stars.length; i++) {
+                stars[i].update(settings.speed);
+                stars[i].draw();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners & Interactive Steering
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+            targetCenterX = centerX;
+            targetCenterY = centerY;
+        });
+
+        // Mouse steering flight pitch/yaw control
+        window.addEventListener('mousemove', (e) => {
+            const offsetX = (e.clientX - width / 2) * 0.35;
+            const offsetY = (e.clientY - height / 2) * 0.35;
+            targetCenterX = centerX - offsetX;
+            targetCenterY = centerY - offsetY;
+        });
+
+        // Boost on Hold / Mouse Down
+        const statusText = document.getElementById('statusText');
+
+        function startBoost() {
+            if (!settings.isBoosting) {
+                settings.isBoosting = true;
+                settings.targetSpeed = settings.baseSpeed * settings.boostMultiplier;
+                statusText.innerText = '⚡ WARP SPEED ENGAGED';
+                statusText.style.color = '#38bdf8';
+            }
+        }
+
+        function stopBoost() {
+            if (settings.isBoosting) {
+                settings.isBoosting = false;
+                settings.targetSpeed = settings.baseSpeed;
+                statusText.innerText = 'Cruising Sub-Light';
+                statusText.style.color = '#94a3b8';
+            }
+        }
+
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.tagName !== 'INPUT' && !e.target.closest('.ui-panel') && !e.target.closest('.ui-toggle')) {
+                startBoost();
+            }
+        });
+
+        window.addEventListener('mouseup', stopBoost);
+
+        // Mouse wheel speed adjust
+        window.addEventListener('wheel', (e) => {
+            if (e.target.closest('.ui-panel')) return;
+            
+            let newSpeed = settings.baseSpeed + (e.deltaY < 0 ? 3 : -3);
+            newSpeed = Math.max(3, Math.min(80, newSpeed));
+            
+            settings.baseSpeed = newSpeed;
+            if (!settings.isBoosting) {
+                settings.targetSpeed = newSpeed;
+            }
+            
+            document.getElementById('speedSlider').value = newSpeed;
+            document.getElementById('speedVal').innerText = Math.round(newSpeed);
+        }, { passive: true });
+
+        // Touch support for mobile devices
+        window.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0 && !e.target.closest('.ui-panel') && !e.target.closest('.ui-toggle')) {
+                const touch = e.touches[0];
+                const offsetX = (touch.clientX - width / 2) * 0.4;
+                const offsetY = (touch.clientY - height / 2) * 0.4;
+                targetCenterX = centerX - offsetX;
+                targetCenterY = centerY - offsetY;
+                startBoost();
+            }
+        });
+
+        window.addEventListener('touchend', stopBoost);
+
+        // UI Controls Wiring
+        const uiPanel = document.getElementById('uiPanel');
+        const uiToggle = document.getElementById('uiToggle');
+
+        uiToggle.addEventListener('click', () => {
+            uiPanel.classList.toggle('collapsed');
+        });
+
+        document.getElementById('speedSlider').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            settings.baseSpeed = val;
+            if (!settings.isBoosting) {
+                settings.targetSpeed = val;
+            }
+            document.getElementById('speedVal').innerText = val;
+        });
+
+        document.getElementById('countSlider').addEventListener('input', (e) => {
+            settings.starCount = parseInt(e.target.value);
+            document.getElementById('countVal').innerText = settings.starCount;
+            adjustStarCount();
+        });
+
+        document.getElementById('trailSlider').addEventListener('input', (e) => {
+            settings.trailLength = parseFloat(e.target.value);
+            document.getElementById('trailVal').innerText = settings.trailLength.toFixed(1) + 'x';
+        });
+
+        document.getElementById('fovSlider').addEventListener('input', (e) => {
+            settings.fov = parseInt(e.target.value);
+            document.getElementById('fovVal').innerText = settings.fov;
+        });
+
+        // Color Mode Buttons
+        const colorBtns = document.querySelectorAll('.btn-group .btn');
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                colorBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                settings.colorMode = btn.dataset.color;
+                
+                // Refresh colors for existing stars
+                stars.forEach(star => {
+                    const palette = COLOR_PALETTES[settings.colorMode];
+                    star.color = palette[Math.floor(Math.random() * palette.length)];
+                });
+            });
+        });
+
+        // Boot Up
+        initStars();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
